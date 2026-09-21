@@ -43,7 +43,7 @@ def _table() -> sa.Table:
 def upgrade() -> None:
     keywords = _table()
     for old, new in RENAMED:
-        op.execute(keywords.update().where(keywords.c.pattern == old).values(pattern=new))
+        _rename_keyword(old, new)
     op.execute(keywords.delete().where(keywords.c.pattern.in_(DROPPED)))
 
 
@@ -51,3 +51,24 @@ def downgrade() -> None:
     keywords = _table()
     for old, new in RENAMED:
         op.execute(keywords.update().where(keywords.c.pattern == new).values(pattern=old))
+
+
+def _rename_keyword(old: str, new: str) -> None:
+    """Переименовать шаблон, а если новое имя уже занято — убрать старый.
+
+    На чистой базе актуальный список засевается сразу целиком (миграция 0002
+    берёт его из кода приложения), поэтому переименовывать бывает не во что:
+    цель уже на месте. Прямой UPDATE в этом случае ломается об уникальный
+    индекс по pattern.
+    """
+    op.execute(
+        sa.text(
+            "DELETE FROM keywords WHERE pattern = :old "
+            "AND EXISTS (SELECT 1 FROM keywords k WHERE k.pattern = :new)"
+        ).bindparams(old=old, new=new)
+    )
+    op.execute(
+        sa.text("UPDATE keywords SET pattern = :new WHERE pattern = :old").bindparams(
+            old=old, new=new
+        )
+    )

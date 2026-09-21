@@ -22,6 +22,7 @@ from app.services import llm, notify
 from app.services.budget import parse_budget
 from app.services.matcher import matcher
 from app.services.settings_store import get_setting, set_internal
+from app.workers import pulse
 
 log = setup_logging("scorer")
 
@@ -307,7 +308,13 @@ async def run() -> None:
             log.exception("сбой цикла скорера")
             done = 0
         if not done:
-            await asyncio.sleep(settings.scorer_interval_sec)
+            # Очередь пуста — цикл закончен, остальным можно ходить в базу.
+            pulse.cycle_done()
+            # Спим до сигнала сборщиков, а не будим базу по таймеру. На
+            # бесплатном хостинге она считает время работы и засыпает только
+            # после 5 минут покоя — опрос «нет ли работы» раз в 5 секунд
+            # не давал ей заснуть вообще.
+            await pulse.wait(settings.scorer_interval_sec)
 
 
 def main() -> None:

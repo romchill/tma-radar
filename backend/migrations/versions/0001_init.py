@@ -134,7 +134,10 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
 
-    _seed_keywords()
+    # Ключевики засевает миграция 0002: она знает и про стоп-слова.
+    # Здесь засева нет намеренно — _seed_keywords() брала список из
+    # живого кода, тот с тех пор дополнялся, и на чистой базе 0002
+    # падала на вставке уже засеянных строк.
 
 
 def _seed_keywords() -> None:

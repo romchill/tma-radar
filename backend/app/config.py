@@ -77,6 +77,9 @@ class Settings(BaseSettings):
     contact_cooldown_days: int = 30
     scorer_batch: int = 20
     scorer_interval_sec: int = 5
+    # запасной таймер напоминалки: обычно она просыпается вместе с циклом
+    # сбора, а это — потолок ожидания, если новых постов не было вовсе
+    followup_interval_sec: int = 300
 
     @property
     def admin_id_list(self) -> list[int]:

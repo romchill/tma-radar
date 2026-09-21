@@ -33,12 +33,14 @@ from app.logging_conf import setup_logging
 from app.models import Lead, LeadEvent, LeadStatus, RawMessage, RawStatus, Source
 from app.services import notify, tgweb
 from app.workers import channels, groups
+from app.workers import pulse
 from app.services.settings_store import get_setting, set_setting
 
 log = setup_logging("bot")
 
 dp = Dispatcher()
-FOLLOWUP_INTERVAL_SEC = 300
+# сколько ждать, если цикл так и не случился (новых постов не было)
+FOLLOWUP_INTERVAL_SEC = settings.followup_interval_sec
 
 
 def utcnow() -> datetime:
@@ -329,9 +331,14 @@ async def from_webapp(message: Message) -> None:
 
 
 async def followup_loop() -> None:
-    """Раз в 5 минут напоминает о лидах, у которых наступил срок."""
+    """Напоминает о лидах, у которых наступил срок.
+
+    Ходит в базу не по своему таймеру, а следом за циклом сбора и оценки:
+    бесплатная база засыпает после 5 минут покоя, и каждый лишний заход
+    в стороне от общего окна стоит ещё пяти минут её работы.
+    """
     while True:
-        await asyncio.sleep(FOLLOWUP_INTERVAL_SEC)
+        await pulse.wait_cycle(FOLLOWUP_INTERVAL_SEC)
         try:
             base = await webapp_base()
             async with SessionLocal() as session:

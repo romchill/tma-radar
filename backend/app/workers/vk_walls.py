@@ -24,6 +24,7 @@ from app.logging_conf import setup_logging
 from app.models import RawMessage, Source
 from app.services import vk
 from app.services.matcher import matcher
+from app.workers import pulse
 
 log = setup_logging("vk")
 
@@ -158,6 +159,8 @@ async def run() -> None:
                 added = await poll_once(session)
                 if added:
                     log.info("новых постов в очередь: %d", added)
+                    # будим скорера сразу, а не ждём его собственного интервала
+                    pulse.ping()
             except Exception:
                 log.exception("сбой обхода групп ВК")
 

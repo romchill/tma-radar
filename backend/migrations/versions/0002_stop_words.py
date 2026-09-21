@@ -12,6 +12,7 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 revision: str = "0002"
 down_revision: Union[str, None] = "0001"
@@ -68,9 +69,24 @@ def upgrade() -> None:
         {"pattern": p, "is_regex": rx, "is_stop": True, "weight": 0, "enabled": True}
         for p, rx in DEFAULT_STOP_WORDS
     ]
-    op.bulk_insert(keywords, rows)
+    _insert_ignoring_existing(keywords, rows)
 
 
 def downgrade() -> None:
     op.drop_index("ix_keywords_is_stop", table_name="keywords")
     op.drop_column("keywords", "is_stop")
+
+
+def _insert_ignoring_existing(table, rows) -> None:
+    """Вставка, которая не спорит с уже засеянными строками.
+
+    Ключевики засеваются несколькими миграциями подряд, и часть из них
+    импортирует актуальный список из кода приложения. На чистой базе ранняя
+    миграция засевает уже дополненный набор, и следующая падает на уникальном
+    индексе по pattern. Пропускаем то, что на месте.
+    """
+    if not rows:
+        return
+    op.execute(
+        pg_insert(table).values(rows).on_conflict_do_nothing(index_elements=["pattern"])
+    )
