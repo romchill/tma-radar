@@ -179,7 +179,7 @@ async def run() -> None:
             except Exception:
                 log.exception("сбой обхода каналов")
 
-            await asyncio.sleep(settings.channel_poll_interval_sec)
+            await pulse.sleep_until_next_tick(settings.channel_poll_interval_sec)
 
 
 def main() -> None:

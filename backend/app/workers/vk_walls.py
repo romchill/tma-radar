@@ -164,7 +164,7 @@ async def run() -> None:
             except Exception:
                 log.exception("сбой обхода групп ВК")
 
-            await asyncio.sleep(settings.vk_poll_interval_sec)
+            await pulse.sleep_until_next_tick(settings.vk_poll_interval_sec)
 
 
 def main() -> None:

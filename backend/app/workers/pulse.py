@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 
 _new_messages = asyncio.Event()
 _cycle_done = asyncio.Event()
@@ -45,6 +46,23 @@ def ping() -> None:
 async def wait(timeout: float) -> bool:
     """Скорер ждёт улова."""
     return await _wait(_new_messages, timeout)
+
+
+async def sleep_until_next_tick(interval: float) -> None:
+    """Спит до ближайшей отметки общей сетки, а не «интервал после работы».
+
+    Обычное `sleep(interval)` в конце цикла означает, что следующий заход
+    начнётся на длительность работы позже предыдущего. У сборщиков работа
+    разной длины — обход Kwork идёт полминуты, обход каналов дольше, — и за
+    сутки они расползаются по фазе на десятки минут.
+
+    Для бесплатной базы это дорого: она засыпает после 5 минут покоя, и если
+    четыре сборщика будят её вразнобой, окна бодрствования смыкаются и она
+    не засыпает вообще. На общей сетке все просыпаются одновременно, база
+    отрабатывает один раз и снова спит.
+    """
+    now = time.time()
+    await asyncio.sleep(interval - (now % interval))
 
 
 def cycle_done() -> None:
