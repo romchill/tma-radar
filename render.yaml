@@ -1,0 +1,32 @@
+# Описание сервиса для Render: по этому файлу он собирает и запускает радар.
+#
+# Регион — Огайо: там же лежит база на Neon (us-east-2), а между ними ходит
+# каждый запрос. Владелец открывает приложение через телеграм, лишние
+# полтораста миллисекунд до Европы ему не нужны, а базе — нужны.
+#
+# Бесплатный сервис засыпает после 15 минут без входящих запросов, поэтому
+# в репозитории лежит задача .github/workflows/keepalive.yml — она стучится
+# раз в 10 минут. Своё исходящее соединение с Telegram сном не считается.
+services:
+  - type: web
+    name: tma-radar
+    runtime: docker
+    plan: free
+    region: ohio
+    dockerfilePath: ./infra/deploy/Dockerfile
+    dockerContext: .
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      # значения задаются в панели Render, в репозиторий не попадают
+      - key: DATABASE_URL
+        sync: false
+      - key: BOT_TOKEN
+        sync: false
+      - key: ADMIN_IDS
+        sync: false
+      - key: VK_SERVICE_TOKEN
+        sync: false
+      # постоянный адрес приложения: по нему бот собирает кнопки мини-аппа
+      - key: DOMAIN
+        sync: false
