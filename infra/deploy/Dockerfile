@@ -1,10 +1,11 @@
-# Образ для Hugging Face Spaces: весь радар в одном контейнере.
+# Образ для бесплатного хостинга: весь радар в одном контейнере.
 #
-# Бесплатный Space даёт ровно один контейнер и постоянный адрес
-# https://<аккаунт>-<space>.hf.space. Поэтому здесь и api, и сбор, и бот
-# живут в одном процессе (RUN_WORKERS_INLINE=true), а база данных вынесена
-# наружу — в бесплатный Postgres на Neon, потому что диск Space сбрасывается
-# при каждом перезапуске.
+# Подходит и Hugging Face Spaces, и Koyeb: оба дают ровно один контейнер
+# и постоянный адрес. Поэтому здесь и api, и сбор, и бот живут в одном
+# процессе (RUN_WORKERS_INLINE=true), а база вынесена наружу — в бесплатный
+# Postgres на Neon, потому что диск контейнера сбрасывается при перезапуске.
+#
+# Порт берётся из $PORT: HF ждёт 7860, Koyeb подставляет свой.
 
 # ---------- сборка мини-аппа ----------
 FROM node:20-alpine AS webapp
@@ -31,11 +32,12 @@ COPY backend/app ./app
 COPY backend/migrations ./migrations
 COPY backend/alembic.ini ./
 COPY --from=webapp /build/dist ./static
-COPY infra/hf/start.sh /start.sh
+COPY infra/deploy/start.sh /start.sh
 RUN chmod +x /start.sh
 
 # HF Spaces пускает трафик только на 7860 и запускает контейнер
-# от пользователя без прав на запись в /app
+# от пользователя без прав на запись в /app. На Koyeb тот же порт
+# указывается в настройках сервиса.
 ENV PORT=7860 \
     STATIC_DIR=/app/static \
     RUN_WORKERS_INLINE=true \

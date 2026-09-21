@@ -40,8 +40,8 @@ jobs:
             --exclude '.github' \
             ./ /tmp/space/
           # HF ждёт Dockerfile и README с описанием Space в корне
-          cp infra/hf/Dockerfile /tmp/space/Dockerfile
-          cp infra/hf/README.md  /tmp/space/README.md
+          cp infra/deploy/Dockerfile          /tmp/space/Dockerfile
+          cp infra/deploy/hf-space-README.md  /tmp/space/README.md
 
       - name: Отправить в Space
         if: steps.check.outputs.skip != 'true'
