@@ -20,6 +20,7 @@ from telethon import TelegramClient, events
 from telethon.tl.types import Channel, Chat, User
 
 from app.config import settings
+from app.services import tgsession
 from app.db import SessionLocal
 from app.logging_conf import setup_logging
 from app.models import RawMessage, Source
@@ -36,7 +37,7 @@ MAX_TEXT_LEN = 8000
 class Collector:
     def __init__(self) -> None:
         self.client = TelegramClient(
-            settings.tg_session,
+            tgsession.build(),
             settings.tg_api_id,
             settings.tg_api_hash,
             # человекоподобные параметры снижают шанс лишнего внимания

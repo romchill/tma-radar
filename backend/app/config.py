@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     tg_api_hash: str = ""
     tg_phone: str = ""
     tg_session: str = "/app/sessions/collector"
+    # Сессия строкой — для хостинга, где диск сбрасывается при передеплое.
+    # Это полный доступ к аккаунту: только в секретах, никогда в репозиторий.
+    tg_session_string: str = ""
     # новые найденные чаты сразу включать в сбор
     autoenable_new_sources: bool = True
 
