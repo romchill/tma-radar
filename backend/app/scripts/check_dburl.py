@@ -17,6 +17,12 @@ NEON = (
 
 CASES = [
     (
+        "строка с невидимым BOM в начале",
+        chr(0xFEFF) + NEON,
+        "postgresql+asyncpg://radar:tajnoe@ep-cool-frog-12345.eu-central-1.aws.neon.tech/radar",
+        {"ssl": True},
+    ),
+    (
         "строка Neon как есть",
         NEON,
         "postgresql+asyncpg://radar:tajnoe@ep-cool-frog-12345.eu-central-1.aws.neon.tech/radar",
