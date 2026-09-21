@@ -18,7 +18,7 @@ from collections.abc import Awaitable, Callable
 
 from app.config import settings
 from app.logging_conf import setup_logging
-from app.workers import bot, channels, collector, scorer, vk_walls
+from app.workers import bot, channels, collector, feeds, kwork_board, scorer, vk_walls
 
 log = setup_logging("worker")
 
@@ -57,6 +57,8 @@ def userbot_configured() -> bool:
 async def main() -> None:
     jobs: list[tuple[str, Callable[[], Awaitable[None]]]] = [
         ("channels", channels.run),
+        ("feeds", feeds.run),
+        ("kwork", kwork_board.run),
         ("vk", vk_walls.run),
         ("scorer", scorer.run),
         ("bot", bot.run),

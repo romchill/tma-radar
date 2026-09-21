@@ -17,9 +17,9 @@ import asyncio
 import aiohttp
 
 from app.logging_conf import setup_logging
-from app.services import notify, tgweb, vk
+from app.services import feeds, kwork, notify, tgweb, vk
 from app.services.matcher import matcher
-from app.workers import channels, scorer, vk_walls
+from app.workers import channels, feeds as feed_worker, kwork_board, scorer, vk_walls
 
 log = setup_logging("once")
 
@@ -39,6 +39,22 @@ async def collect() -> int:
             total += added
         except Exception:
             log.exception("сбой обхода каналов")
+
+    async with aiohttp.ClientSession(timeout=feeds.TIMEOUT) as http:
+        try:
+            added = await feed_worker.poll_once(http)
+            log.info("биржи: новых заказов %d", added)
+            total += added
+        except Exception:
+            log.exception("сбой обхода лент")
+
+    async with aiohttp.ClientSession(timeout=kwork.TIMEOUT) as http:
+        try:
+            added = await kwork_board.poll_once(http)
+            log.info("kwork: новых заказов %d", added)
+            total += added
+        except Exception:
+            log.exception("сбой обхода Kwork")
 
     async with aiohttp.ClientSession(timeout=vk.TIMEOUT) as http:
         try:
