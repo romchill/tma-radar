@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Радар</title>
+    <!--
+      Telegram кладёт параметры запуска в якорь адреса, а telegram-web-app.js
+      затирает его сразу после разбора. Сохраняем до этого — иначе при разборе
+      проблем со входом смотреть уже не на что.
+    -->
+    <script>
+      window.__launchHash = window.location.hash || "";
+    </script>
+    <!-- Официальный скрипт Telegram. Только с ним доступен window.Telegram.WebApp. -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

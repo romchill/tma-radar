@@ -1,0 +1,13 @@
+.env
+*.session
+*.session-journal
+backend/sessions/
+webapp/dist/
+webapp/node_modules/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.idea/
+.vscode/
+.DS_Store

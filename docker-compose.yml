@@ -1,0 +1,144 @@
+name: tma-radar
+
+# Собрано под слабую машину: WSL отдано 3 ГБ на все контейнеры разом, и рядом
+# постоянно крутится promt-shop (~620 МБ). Поэтому здесь три контейнера вместо
+# шести, у каждого жёсткий лимит памяти, и наружу ничего не публикуется.
+#
+#   db      — postgres
+#   api     — FastAPI: /api + раздача собранного мини-аппа
+#   worker  — collector + scorer + bot в одном процессе
+#   tunnel  — временный публичный https, поднимается только по надобности
+#
+# Порт 80 занят контейнером promt-shop-caddy-1, поэтому api слушает 8000
+# и только на 127.0.0.1 — снаружи машины он недоступен.
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "5m"
+    max-file: "3"
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-radar}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задай POSTGRES_PASSWORD в .env}
+      POSTGRES_DB: ${POSTGRES_DB:-radar}
+    # на 6 ГБ машине дефолтные 128 МБ shared_buffers избыточны
+    command: >
+      postgres -c shared_buffers=48MB -c max_connections=30
+               -c effective_cache_size=192MB -c work_mem=4MB
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-radar} -d ${POSTGRES_DB:-radar}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  migrate:
+    build: ./backend
+    env_file: [.env]
+    depends_on:
+      db: {condition: service_healthy}
+    command: alembic upgrade head
+    restart: "no"
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  api:
+    build: ./backend
+    restart: unless-stopped
+    env_file: [.env]
+    depends_on:
+      db: {condition: service_healthy}
+      migrate: {condition: service_completed_successfully}
+    command: uvicorn app.api.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips=*
+    volumes:
+      # собранный фронт подкидывается как есть: пересобрал npm run build —
+      # хватит перезапуска контейнера, образ трогать не нужно
+      - ./webapp/dist:/app/static:ro
+    ports:
+      # только петля: наружу машины ничего не торчит, публичный адрес даёт туннель
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 25s
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 320M
+
+  worker:
+    build: ./backend
+    restart: unless-stopped
+    env_file: [.env]
+    depends_on:
+      db: {condition: service_healthy}
+      migrate: {condition: service_completed_successfully}
+    command: python -m app.workers.all
+    volumes:
+      # сессия юзербота: переживает пересборку образа
+      - ./backend/sessions:/app/sessions
+      # адрес туннеля: его пишет контейнер tunnel, бот подхватывает
+      - tunnel_state:/shared:ro
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+
+  # ── Туннель наружу ──────────────────────────────────────────────────────
+  #    Нужен только чтобы открыть мини-апп с телефона: у Telegram требование
+  #    публичного https, а домена и хостинга нет.
+  #
+  #    Сбор лидов и пуши в бота работают БЕЗ туннеля — они ходят наружу сами.
+  #
+  #    Cloudflare Tunnel на этой сети не поднимается (порт 7844 закрыт).
+  #    Берём localhost.run: обычный ssh и, в отличие от Pinggy, никакой
+  #    страницы-предупреждения — на ней вебвью Telegram показывает белый экран.
+  #    Адрес выдаётся новый при каждом переподключении, поэтому туннель пишет
+  #    его в общий том, а бот подхватывает сам.
+  tunnel:
+    build:
+      context: .
+      dockerfile: infra/tunnel.Dockerfile
+    profiles: ["tunnel"]
+    restart: unless-stopped
+    environment:
+      TUNNEL_TARGET_HOST: api
+      TUNNEL_TARGET_PORT: "8000"
+      # Постоянный адрес: <имя>.serveo.net. Работает, только если ssh-ключ
+      # туннеля зарегистрирован на console.serveo.net. Пусто = временный адрес.
+      TUNNEL_SUBDOMAIN: ${TUNNEL_SUBDOMAIN:-}
+    volumes:
+      - tunnel_state:/shared
+    depends_on:
+      - api
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+
+volumes:
+  pgdata:
+  tunnel_state:
