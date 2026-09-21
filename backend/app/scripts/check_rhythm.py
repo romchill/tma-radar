@@ -1,15 +1,17 @@
-"""Проверка, что сборщики не расползаются по фазе.
+"""Проверка, что сборщики будят базу одним окном, а не вразнобой.
 
 Обычное `sleep(interval)` в конце цикла сдвигает следующий заход на
 длительность работы. У сборщиков она разная — обход Kwork идёт полминуты,
-обход каналов дольше, — и за сутки они расходятся на десятки минут.
+обход каналов дольше, — и за сутки они расходятся по фазе на десятки минут.
 
 Бесплатной базе это дорого: она засыпает после 5 минут покоя, и четыре
 сборщика вразнобой держат её включённой почти всё время. На общей сетке они
-просыпаются одновременно, база отрабатывает один раз и снова спит.
+просыпаются на одних и тех же отметках, база отрабатывает один раз и спит.
 
-Проверяем численно: гоняем четыре «сборщика» с разной длительностью работы и
-смотрим, как расходятся моменты их пробуждения.
+Мерить надо именно попадание в отметку, а не «сколько прошло между
+пробуждениями»: сборщик, закончивший работу сразу после отметки, ждёт
+следующую и оказывается на круг позади — при этом он по-прежнему на сетке
+и базу будит вместе со всеми.
 """
 
 from __future__ import annotations
@@ -20,7 +22,7 @@ import time
 from app.workers import pulse
 
 INTERVAL = 2.0
-ROUNDS = 4
+ROUNDS = 5
 # «сборщики» с разной длительностью работы, как в жизни
 DURATIONS = {"каналы": 0.5, "kwork": 0.3, "ленты": 0.05, "вк": 0.02}
 
@@ -32,29 +34,38 @@ async def collector(name: str, work: float, sleeper, wakeups: dict) -> None:
         await sleeper(INTERVAL)
 
 
-async def measure(sleeper) -> float:
-    """Максимальный разброс моментов пробуждения в последнем круге."""
+async def phases(sleeper) -> list[float]:
+    """Куда внутри интервала попадают пробуждения.
+
+    0 — ровно на отметку сетки. Разброс этих значений и показывает,
+    просыпаются сборщики вместе или размазаны по всему интервалу.
+    """
     wakeups: dict[str, list[float]] = {}
     await asyncio.gather(
         *(collector(n, w, sleeper, wakeups) for n, w in DURATIONS.items())
     )
-    last = [times[-1] for times in wakeups.values()]
-    return max(last) - min(last)
+    # первое пробуждение — момент старта, он у всех общий и ни о чём не говорит
+    out = []
+    for times in wakeups.values():
+        for moment in times[1:]:
+            phase = moment % INTERVAL
+            out.append(min(phase, INTERVAL - phase))  # расстояние до отметки
+    return out
 
 
 async def main() -> None:
-    print(f"интервал {INTERVAL} с, {ROUNDS} круга, работа от 0.02 до 0.5 с\n")
+    print(f"интервал {INTERVAL} с, {ROUNDS} кругов, работа от 0.02 до 0.5 с")
+    print("меряем, насколько пробуждения отходят от отметки сетки\n")
 
-    drift_plain = await measure(asyncio.sleep)
-    print(f"  обычный sleep:     разброс {drift_plain:.2f} с")
+    plain = await phases(asyncio.sleep)
+    grid = await phases(pulse.sleep_until_next_tick)
 
-    drift_grid = await measure(pulse.sleep_until_next_tick)
-    print(f"  общая сетка:       разброс {drift_grid:.2f} с")
+    print(f"  обычный sleep:  худшее отклонение {max(plain):.2f} с")
+    print(f"  общая сетка:    худшее отклонение {max(grid):.2f} с")
 
     checks = [
-        ("обычный sleep расползается", drift_plain > INTERVAL / 4),
-        ("на сетке сборщики идут вместе", drift_grid < 0.1),
-        ("сетка заметно лучше", drift_grid < drift_plain / 3),
+        ("обычный sleep уводит с отметки", max(plain) > INTERVAL / 8),
+        ("на сетке все попадают в отметку", max(grid) < 0.05),
     ]
 
     print()
