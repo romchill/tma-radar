@@ -1,0 +1,65 @@
+name: Обход источников
+
+# Радар работает, даже когда ноутбук выключен: GitHub сам раз в 15 минут
+# обходит каналы и группы, оценивает найденное и присылает заказы в телеграм.
+# Данные лежат во внешней базе, поэтому проходы продолжают друг друга.
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+# два прохода разом полезли бы в одну очередь; хватает одного
+concurrency:
+  group: radar
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Проверить, что база подключена
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            # База ещё не подключена — это не поломка, просто ждём.
+            # Падать нельзя: задача идёт раз в 15 минут и владелец утонет
+            # в письмах о сбоях.
+            echo "::notice::Нет секрета DATABASE_URL — обходить нечего."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+        id: check
+
+      - uses: actions/setup-python@v5
+        if: steps.check.outputs.skip != 'true'
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Поставить зависимости
+        if: steps.check.outputs.skip != 'true'
+        working-directory: backend
+        run: pip install --quiet -r requirements.txt
+
+      - name: Подтянуть схему базы
+        if: steps.check.outputs.skip != 'true'
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: alembic upgrade head
+
+      - name: Собрать, оценить, отправить
+        if: steps.check.outputs.skip != 'true'
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          ADMIN_IDS: ${{ secrets.ADMIN_IDS }}
+          VK_SERVICE_TOKEN: ${{ secrets.VK_SERVICE_TOKEN }}
+          # заказ живёт часы; всё, что старше, уже разобрали
+          MAX_POST_AGE_HOURS: "12"
+        run: python -m app.workers.once
