@@ -18,6 +18,7 @@ from aiogram.enums import ParseMode
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
 from app.config import settings
+from app.services import orderlink
 
 log = logging.getLogger(__name__)
 
@@ -76,13 +77,14 @@ def lead_keyboard(
     elif username:
         second.append(InlineKeyboardButton(text="✍️ Написать", url=f"https://t.me/{username}"))
     if link:
-        # без прямого контакта это единственный путь к заказу, поэтому явно
-        second.append(
-            InlineKeyboardButton(
-                text="Открыть заказ" if not (contact_url or username) else "Источник",
-                url=link,
-            )
-        )
+        # Подписываем кнопку местом назначения: «Открыть на Kwork» сразу
+        # говорит, куда ведёт и где откликаться, а «Открыть заказ» — нет.
+        shop = orderlink.shop_name(link)
+        if shop:
+            label = f"Открыть на {shop}"
+        else:
+            label = "Открыть заказ" if not (contact_url or username) else "Источник"
+        second.append(InlineKeyboardButton(text=label, url=link))
     if second:
         rows.append(second)
 
@@ -119,10 +121,21 @@ def render_lead(lead, raw, hot: bool = False) -> str:
     if facts:
         lines.append("\n" + "  ".join(facts))
 
-    lines.append(f"\n<i>{html.escape(who)} · {html.escape(raw.chat_title or '?')}</i>")
+    # У бирж «автор» и «источник» — одно и то же: повторять незачем.
+    source = raw.chat_title or "?"
+    origin = who if who == source else f"{who} · {source}"
+    lines.append(f"\n<i>{html.escape(origin)}</i>")
+
+    # Ссылку показываем текстом, а не только кнопкой: её видно сразу, можно
+    # скопировать и переслать, и понятно, куда идти откликаться.
+    link = getattr(raw, "link", None)
+    if link:
+        shop = orderlink.shop_name(link)
+        title = f"Открыть на {shop}" if shop else "Открыть заказ"
+        lines.append(f'🔗 <a href="{html.escape(link, quote=True)}">{title}</a>')
 
     if not getattr(raw, "contact_url", None):
-        lines.append("<i>прямого контакта нет — откликаться в первоисточнике</i>")
+        lines.append("<i>прямого контакта нет — откликаться там же</i>")
 
     lines.append(f"\n<blockquote expandable>{html.escape(raw.text[:900])}</blockquote>")
     return "\n".join(lines)

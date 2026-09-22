@@ -22,6 +22,8 @@ from datetime import datetime
 
 import aiohttp
 
+from app.services import orderlink
+
 log = logging.getLogger(__name__)
 
 BASE = "https://t.me/s/"
@@ -65,6 +67,9 @@ class ChannelPost:
     link: str
     posted_at: datetime | None
     contact: str | None  # @username, вытащенный из текста
+    # Ссылка на сам заказ на бирже, если пост — перепечатка.
+    # Живёт в разметке поста, а не в его тексте.
+    order_url: str | None = None
 
 
 def channel_chat_id(username: str) -> int:
@@ -153,6 +158,7 @@ def parse_channel(page: str, channel: str) -> list[ChannelPost]:
                 link=f"https://t.me/{post_ref}",
                 posted_at=posted_at,
                 contact=extract_contact(text, raw_html, channel),
+                order_url=orderlink.find(raw_html, text),
             )
         )
 
@@ -190,6 +196,7 @@ def split_digest(post: ChannelPost) -> list[ChannelPost]:
                 text=title.strip(),
                 # ссылка на сам заказ полезнее ссылки на подборку
                 link=url,
+                order_url=orderlink.find(url),
                 contact=extract_contact(title, title, post.channel),
             )
         )

@@ -120,7 +120,9 @@ async def store(
                 contact_url=f"https://t.me/{contact}" if contact else None,
                 author_name=(title or post.channel)[:256],
                 text=post.text[:MAX_TEXT_LEN],
-                link=post.link,
+                # Ссылка на сам заказ, если пост — перепечатка биржи: из поста
+                # всё равно пришлось бы идти туда же, но на два клика дольше.
+                link=post.order_url or post.link,
                 matched=hits,
                 posted_at=post.posted_at,
             )
