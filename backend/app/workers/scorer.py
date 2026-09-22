@@ -18,7 +18,7 @@ from app.config import settings
 from app.db import SessionLocal
 from app.logging_conf import setup_logging
 from app.models import Contact, Lead, LeadEvent, LeadStatus, RawMessage, RawStatus
-from app.services import llm, notify
+from app.services import llm, notify, orderlink
 from app.services.budget import parse_budget
 from app.services.matcher import matcher
 from app.services.settings_store import get_setting, set_internal
@@ -183,7 +183,40 @@ async def heuristic_assess(raw: RawMessage) -> llm.Assessment:
     )
 
 
+async def find_same_order(session: AsyncSession, raw: RawMessage) -> int | None:
+    """Тот же заказ, пойманный другим источником. Возвращает id первого лида.
+
+    Каналы @freelance_zakazy и @it_zakazy перепечатывают Kwork, поэтому один
+    заказ приходит дважды: напрямую с биржи и постом в канале. Владельцу это
+    два одинаковых уведомления, а при лимите в 15 пушей в сутки ещё и
+    потраченный впустую слот.
+
+    Склеиваем по ссылке на заказ, а не по похожести текстов: у обеих копий
+    она теперь одинаковая, и это точный признак, а не догадка. Ссылки на пост
+    канала (t.me) для сравнения не годятся — разные посты и есть разные.
+    """
+    link = orderlink.find(raw.link)
+    if not link:
+        return None
+
+    return await session.scalar(
+        select(Lead.id)
+        .join(RawMessage, RawMessage.id == Lead.raw_message_id)
+        .where(RawMessage.link == link, RawMessage.id != raw.id)
+        .order_by(Lead.id.asc())
+        .limit(1)
+    )
+
+
 async def process(session: AsyncSession, raw: RawMessage) -> None:
+    twin = await find_same_order(session, raw)
+    if twin is not None:
+        raw.status = RawStatus.DUPLICATE
+        raw.processed_at = utcnow()
+        await session.commit()
+        log.info("#%s пропуск: этот заказ уже в ленте как лид %s", raw.id, twin)
+        return
+
     if await is_on_cooldown(session, raw.author_id):
         raw.status = RawStatus.DUPLICATE
         raw.processed_at = utcnow()

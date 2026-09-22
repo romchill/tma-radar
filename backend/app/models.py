@@ -111,6 +111,8 @@ class RawMessage(Base):
         UniqueConstraint("tg_chat_id", "tg_message_id", name="uq_raw_chat_message"),
         Index("ix_raw_status_id", "status", "id"),
         Index("ix_raw_posted_at", "posted_at"),
+        # по ссылке ищется тот же заказ, пойманный другим источником
+        Index("ix_raw_link", "link"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
